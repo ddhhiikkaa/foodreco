@@ -78,9 +78,27 @@ export type PlaceDetails = {
   website?: string;
   popular_dishes?: string[];
   photos?: string[];
-  hours?: string;
+  hours?: Array<Record<string, string>>;
+  open_state?: string;
   service_options?: Record<string, boolean>;
 };
+
+function normalizeHours(raw: unknown): Array<Record<string, string>> | undefined {
+  if (!raw) return undefined;
+  if (Array.isArray(raw)) {
+    const out: Array<Record<string, string>> = [];
+    for (const item of raw) {
+      if (typeof item === "object" && item !== null) {
+        out.push(item as Record<string, string>);
+      }
+    }
+    return out.length ? out : undefined;
+  }
+  if (typeof raw === "object" && raw !== null) {
+    return [raw as Record<string, string>];
+  }
+  return undefined;
+}
 
 export async function getPlaceDetails(dataId: string): Promise<PlaceDetails> {
   const data = await mapsSearch({ data_id: dataId });
@@ -115,7 +133,8 @@ export async function getPlaceDetails(dataId: string): Promise<PlaceDetails> {
     website: p.website,
     popular_dishes: popularDishes.length ? popularDishes : undefined,
     photos: photos.slice(0, 5),
-    hours: p.hours,
+    hours: normalizeHours(p.hours),
+    open_state: p.open_state,
     service_options: p.service_options,
   };
 }
