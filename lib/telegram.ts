@@ -33,6 +33,37 @@ export async function sendChatAction(chatId: number, action: "typing"): Promise<
   }).catch(() => {});
 }
 
+export async function sendPhoto(chatId: number, photoUrl: string, caption?: string): Promise<void> {
+  const res = await fetch(`${TG_API}/bot${token()}/sendPhoto`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      photo: photoUrl,
+      caption,
+      parse_mode: caption ? "Markdown" : undefined,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    console.error("telegram sendPhoto failed", res.status, body);
+  }
+}
+
+export async function sendMediaGroup(chatId: number, photoUrls: string[]): Promise<void> {
+  if (!photoUrls.length) return;
+  const media = photoUrls.slice(0, 10).map((url) => ({ type: "photo", media: url }));
+  const res = await fetch(`${TG_API}/bot${token()}/sendMediaGroup`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, media }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    console.error("telegram sendMediaGroup failed", res.status, body);
+  }
+}
+
 function splitForTelegram(text: string, limit = 4000): string[] {
   if (text.length <= limit) return [text];
   const out: string[] = [];
@@ -54,5 +85,6 @@ export type TelegramUpdate = {
     chat: { id: number; type: string };
     from?: { id: number; username?: string };
     text?: string;
+    location?: { latitude: number; longitude: number };
   };
 };
