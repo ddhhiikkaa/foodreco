@@ -1,28 +1,36 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { waitUntil } from "@vercel/functions";
 import { sendMessage, sendChatAction, type TelegramUpdate } from "../lib/telegram.js";
 import { loadHistory, saveHistory, clearHistory } from "../lib/memory.js";
 import { runAgent } from "../lib/agent.js";
 
-export const config = { runtime: "nodejs" };
-
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: IncomingMessage & { body?: unknown; query?: Record<string, string | string[]> },
+  res: ServerResponse
+): Promise<void> {
   if (req.method !== "POST") {
-    return new Response("ok", { status: 200 });
+    res.statusCode = 200;
+    res.end("ok");
+    return;
   }
 
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
   if (secret) {
-    const url = new URL(req.url);
-    if (url.searchParams.get("s") !== secret) {
-      return new Response("forbidden", { status: 403 });
+    const provided = typeof req.query?.s === "string" ? req.query.s : undefined;
+    if (provided !== secret) {
+      res.statusCode = 403;
+      res.end("forbidden");
+      return;
     }
   }
 
   let update: TelegramUpdate;
   try {
-    update = (await req.json()) as TelegramUpdate;
+    update = (req.body ?? (await readJson(req))) as TelegramUpdate;
   } catch {
-    return new Response("bad request", { status: 400 });
+    res.statusCode = 400;
+    res.end("bad request");
+    return;
   }
 
   const msg = update.message;
@@ -30,14 +38,24 @@ export default async function handler(req: Request): Promise<Response> {
   const chatId = msg?.chat.id;
 
   if (!msg || !text || !chatId) {
-    return new Response("ok", { status: 200 });
+    res.statusCode = 200;
+    res.end("ok");
+    return;
   }
 
   // Ack Telegram immediately so we never trigger webhook retries.
-  // Actual work happens in the background.
+  // Actual work runs in the background up to maxDuration.
   waitUntil(handleMessage(chatId, text));
 
-  return new Response("ok", { status: 200 });
+  res.statusCode = 200;
+  res.end("ok");
+}
+
+async function readJson(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  const body = Buffer.concat(chunks).toString("utf8");
+  return body ? JSON.parse(body) : {};
 }
 
 async function handleMessage(chatId: number, text: string): Promise<void> {
