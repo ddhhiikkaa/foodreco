@@ -147,23 +147,43 @@ export type Review = {
   user?: string;
 };
 
-export async function getReviews(dataId: string, limit = 20): Promise<Review[]> {
+async function fetchReviewPage(dataId: string, sortBy: "newestFirst" | "qualityScore"): Promise<Review[]> {
   const qs = new URLSearchParams({
     engine: "google_maps_reviews",
     data_id: dataId,
     api_key: key(),
     hl: "en",
-    sort_by: "newestFirst",
+    sort_by: sortBy,
   });
   const res = await fetch(`${SERPAPI}?${qs.toString()}`);
   if (!res.ok) throw new Error(`SerpAPI reviews failed: ${res.status}`);
   const data = (await res.json()) as any;
-  const reviews: any[] = data.reviews ?? [];
-  return reviews.slice(0, limit).map((r) => ({
+  return (data.reviews ?? []).map((r: any) => ({
     rating: r.rating,
     snippet: r.snippet ?? r.extracted_snippet?.original,
     date: r.date,
     iso_date: r.iso_date,
     user: r.user?.name,
   }));
+}
+
+export async function getReviews(dataId: string): Promise<Review[]> {
+  // Fetch newest AND most-relevant in parallel, then merge & deduplicate.
+  // Newest = good for vibe/recency signal.
+  // qualityScore (most relevant) = good for dish mentions — these are longer, more detailed.
+  const [newest, relevant] = await Promise.all([
+    fetchReviewPage(dataId, "newestFirst"),
+    fetchReviewPage(dataId, "qualityScore"),
+  ]);
+
+  const seen = new Set<string>();
+  const merged: Review[] = [];
+  for (const r of [...newest, ...relevant]) {
+    const key = r.snippet?.slice(0, 60) ?? r.user ?? Math.random().toString();
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(r);
+    }
+  }
+  return merged;
 }
