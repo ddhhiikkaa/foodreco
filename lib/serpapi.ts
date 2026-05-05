@@ -167,6 +167,8 @@ async function fetchReviewPage(dataId: string, sortBy: "newestFirst" | "qualityS
   }));
 }
 
+const MIN_REVIEW_LENGTH = 60; // characters — filters out "Good food" / rating-only entries
+
 export async function getReviews(dataId: string): Promise<Review[]> {
   // Fetch newest AND most-relevant in parallel, then merge & deduplicate.
   // Newest = good for vibe/recency signal.
@@ -179,7 +181,9 @@ export async function getReviews(dataId: string): Promise<Review[]> {
   const seen = new Set<string>();
   const merged: Review[] = [];
   for (const r of [...newest, ...relevant]) {
-    const key = r.snippet?.slice(0, 60) ?? r.user ?? Math.random().toString();
+    const text = r.snippet ?? "";
+    if (text.length < MIN_REVIEW_LENGTH) continue; // skip rating-only or one-liners
+    const key = text.slice(0, 60);
     if (!seen.has(key)) {
       seen.add(key);
       merged.push(r);
